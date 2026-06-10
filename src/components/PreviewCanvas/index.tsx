@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorStore';
-import { processFrame } from '@/utils/frameProcessor';
+import { processFrameAtTime, processFrame } from '@/utils/frameProcessor';
+import { getFrameIndexAtTime } from '@/utils/animation';
 
 export default function PreviewCanvas() {
   const {
     frames,
     currentFrameIndex,
-    setCurrentFrameIndex,
+    currentPlaybackTime,
+    totalDuration,
+    setCurrentPlaybackTime,
     isPlaying,
     setIsPlaying,
     playbackSpeed,
@@ -15,18 +18,16 @@ export default function PreviewCanvas() {
     crop,
     canvasWidth,
     canvasHeight,
-    selectedFrameIndex,
     setSelectedFrameIndex,
   } = useEditorStore();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
-  const accumulatedTimeRef = useRef<number>(0);
   const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
-    if (!isPlaying || frames.length === 0) {
+    if (!isPlaying || frames.length === 0 || totalDuration === 0) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
@@ -41,21 +42,23 @@ export default function PreviewCanvas() {
 
       const delta = timestamp - lastFrameTimeRef.current;
       lastFrameTimeRef.current = timestamp;
-      accumulatedTimeRef.current += delta * playbackSpeed;
 
-      const currentFrame = frames[currentFrameIndex];
-      if (currentFrame && accumulatedTimeRef.current >= currentFrame.delay) {
-        accumulatedTimeRef.current = 0;
-        const nextIndex = currentFrameIndex >= frames.length - 1 ? 0 : currentFrameIndex + 1;
-        setCurrentFrameIndex(nextIndex);
-        setSelectedFrameIndex(nextIndex);
+      const state = useEditorStore.getState();
+      let newTime = state.currentPlaybackTime + delta * state.playbackSpeed;
+      if (newTime >= state.totalDuration) {
+        newTime = newTime % state.totalDuration;
+      }
+
+      const newFrameIndex = getFrameIndexAtTime(state.frames, newTime);
+      setCurrentPlaybackTime(newTime);
+      if (newFrameIndex !== state.selectedFrameIndex) {
+        setSelectedFrameIndex(newFrameIndex);
       }
 
       animationRef.current = requestAnimationFrame(animate);
     };
 
     lastFrameTimeRef.current = 0;
-    accumulatedTimeRef.current = 0;
     animationRef.current = requestAnimationFrame(animate);
 
     return () => {
@@ -63,7 +66,7 @@ export default function PreviewCanvas() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isPlaying, frames, currentFrameIndex, playbackSpeed, setCurrentFrameIndex, setSelectedFrameIndex]);
+  }, [isPlaying, frames.length, totalDuration, playbackSpeed, setCurrentPlaybackTime, setSelectedFrameIndex]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -79,11 +82,16 @@ export default function PreviewCanvas() {
     const frame = frames[currentFrameIndex];
     if (!frame) return;
 
-    const processedData = processFrame(frame, captions, currentFrameIndex, crop);
+    let processedData: ImageData;
+    if (isPlaying) {
+      processedData = processFrameAtTime(frame, captions, currentPlaybackTime, currentFrameIndex, crop);
+    } else {
+      processedData = processFrame(frame, captions, currentFrameIndex, crop, undefined, undefined, frames);
+    }
     canvas.width = processedData.width;
     canvas.height = processedData.height;
     ctx.putImageData(processedData, 0, 0);
-  }, [currentFrameIndex, frames, captions, crop]);
+  }, [currentFrameIndex, currentPlaybackTime, frames, captions, crop, isPlaying]);
 
   const handleCanvasClick = () => {
     if (frames.length === 0) return;
@@ -172,6 +180,39 @@ export default function PreviewCanvas() {
           )}
         </div>
       </div>
+
+      {frames.length > 0 && totalDuration > 0 && (
+        <div className="px-4 py-3 border-t border-slate-800 bg-slate-900/50">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-xs text-slate-400 font-mono w-20 text-right">
+              {currentPlaybackTime.toFixed(0)}ms
+            </span>
+            <div className="flex-1 relative h-2 bg-slate-800 rounded-full cursor-pointer group"
+              onClick={(e) => {
+                const rect = (e.target as HTMLElement).getBoundingClientRect();
+                const ratio = (e.clientX - rect.left) / rect.width;
+                setCurrentPlaybackTime(ratio * totalDuration);
+              }}
+            >
+              <div
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full transition-all"
+                style={{ width: `${totalDuration > 0 ? (currentPlaybackTime / totalDuration) * 100 : 0}%` }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ left: `calc(${totalDuration > 0 ? (currentPlaybackTime / totalDuration) * 100 : 0}% - 8px)` }}
+              />
+            </div>
+            <span className="text-xs text-slate-400 font-mono w-20">
+              {totalDuration.toFixed(0)}ms
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
+            <span>帧 {currentFrameIndex + 1} / {frames.length}</span>
+            <span>{totalDuration > 0 ? ((currentPlaybackTime / totalDuration) * 100).toFixed(1) : 0}%</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

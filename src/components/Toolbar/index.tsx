@@ -18,24 +18,27 @@ export default function Toolbar() {
     isPlaying,
     setIsPlaying,
     currentFrameIndex,
+    currentPlaybackTime,
+    totalDuration,
     setCurrentFrameIndex,
     setShowImportDialog,
     setShowExportDialog,
     playbackSpeed,
     setPlaybackSpeed,
     clearAll,
+    setSelectedFrameIndex,
   } = useEditorStore();
 
   const handlePrevFrame = () => {
     const newIndex = currentFrameIndex > 0 ? currentFrameIndex - 1 : frames.length - 1;
     setCurrentFrameIndex(newIndex);
-    useEditorStore.getState().setSelectedFrameIndex(newIndex);
+    setSelectedFrameIndex(newIndex);
   };
 
   const handleNextFrame = () => {
     const newIndex = currentFrameIndex < frames.length - 1 ? currentFrameIndex + 1 : 0;
     setCurrentFrameIndex(newIndex);
-    useEditorStore.getState().setSelectedFrameIndex(newIndex);
+    setSelectedFrameIndex(newIndex);
   };
 
   const togglePlay = () => {
@@ -142,12 +145,21 @@ export default function Toolbar() {
 
         <div className="text-sm text-slate-400 font-mono">
           {frames.length > 0 ? (
-            <span>
-              <span className="text-violet-400">{currentFrameIndex + 1}</span>
-              <span className="mx-1">/</span>
-              <span>{frames.length}</span>
-              <span className="ml-3 text-slate-500">帧</span>
-            </span>
+            <div className="flex items-center gap-3">
+              <span>
+                <span className="text-violet-400">{currentFrameIndex + 1}</span>
+                <span className="mx-1">/</span>
+                <span>{frames.length}</span>
+                <span className="ml-2 text-slate-500">帧</span>
+              </span>
+              <span className="text-slate-600">|</span>
+              <span>
+                <span className="text-cyan-400">{currentPlaybackTime.toFixed(0)}</span>
+                <span className="mx-1">/</span>
+                <span>{totalDuration.toFixed(0)}</span>
+                <span className="ml-1 text-slate-500">ms</span>
+              </span>
+            </div>
           ) : (
             <span className="text-slate-500">暂无帧</span>
           )}
